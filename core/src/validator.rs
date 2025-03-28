@@ -299,7 +299,6 @@ pub struct ValidatorConfig {
     pub shred_retransmit_receiver_address: Arc<RwLock<Option<SocketAddr>>>,
     pub tip_manager_config: TipManagerConfig,
     pub preallocated_bundle_cost: u64,
-    pub mods_config_path: Option<PathBuf>,
 }
 
 impl Default for ValidatorConfig {
@@ -378,7 +377,6 @@ impl Default for ValidatorConfig {
             shred_retransmit_receiver_address: Arc::new(RwLock::new(None)),
             tip_manager_config: TipManagerConfig::default(),
             preallocated_bundle_cost: u64::default(),
-            mods_config_path: None,
         }
     }
 }
@@ -1377,7 +1375,7 @@ impl Validator {
         } else {
             None
         };
-        let mut tower = match process_blockstore.process_to_create_tower() {
+        let tower = match process_blockstore.process_to_create_tower() {
             Ok(tower) => {
                 info!("Tower state: {:?}", tower);
                 tower
@@ -1390,7 +1388,6 @@ impl Validator {
                 Tower::default()
             }
         };
-        tower.mods_config_path = config.mods_config_path.clone();
         let last_vote = tower.last_vote();
 
         let outstanding_repair_requests =

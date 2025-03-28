@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::replay_stage::DUPLICATE_THRESHOLD;
 
 pub mod fork_choice;
@@ -164,7 +162,8 @@ const VOTE_THRESHOLD_DEPTH_SHALLOW: usize = 4;
 pub const VOTE_THRESHOLD_DEPTH: usize = 8;
 pub const SWITCH_FORK_THRESHOLD: f64 = 0.38;
 
-const DEFAULT_MODS_CONFIG_PATH: &str = "./mostly_confirmed_threshold";
+const DEFAULT_MODS_CONFIG_FILE: &str = "./mostly_confirmed_threshold";
+const SOLANA_MODS_CONFIG_FILE: &str = "SOLANA_MODS_CONFIG_FILE";
 
 pub type Result<T> = std::result::Result<T, TowerError>;
 
@@ -210,7 +209,6 @@ impl TowerVersions {
                     last_timestamp: tower.last_timestamp,
                     stray_restored_slot: tower.stray_restored_slot,
                     last_switch_threshold_check: tower.last_switch_threshold_check,
-                    mods_config_path: None,
                     mostly_confirmed_threshold: None,
                     threshold_ahead_count: None,
                     after_skip_threshold: None,
@@ -229,7 +227,6 @@ impl TowerVersions {
                 last_timestamp: tower.last_timestamp,
                 stray_restored_slot: tower.stray_restored_slot,
                 last_switch_threshold_check: tower.last_switch_threshold_check,
-                mods_config_path: None,
                 mostly_confirmed_threshold: None,
                 threshold_ahead_count: None,
                 after_skip_threshold: None,
@@ -286,8 +283,6 @@ pub struct Tower {
     #[serde(skip)]
     pub last_switch_threshold_check: Option<(Slot, SwitchForkDecision)>,
     #[serde(skip)]
-    pub mods_config_path: Option<PathBuf>,
-    #[serde(skip)]
     mostly_confirmed_threshold: Option<f64>,
     #[serde(skip)]
     threshold_ahead_count: Option<u8>,
@@ -310,7 +305,6 @@ impl Default for Tower {
             last_timestamp: BlockTimestamp::default(),
             last_vote_tx_blockhash: BlockhashStatus::default(),
             stray_restored_slot: Option::default(),
-            mods_config_path: Option::default(),
             last_switch_threshold_check: Option::default(),
             mostly_confirmed_threshold: None,
             threshold_ahead_count: None,
@@ -731,14 +725,12 @@ impl Tower {
             warn!("Checking for change to mostly_confirmed_threshold");
             self.last_config_check_seconds = config_check_seconds;
 
-            let mods_config_path = self
-                .mods_config_path
-                .as_deref()
-                .unwrap_or_else(|| Path::new(DEFAULT_MODS_CONFIG_PATH));
+            let mods_config_file = std::env::var(SOLANA_MODS_CONFIG_FILE)
+                .unwrap_or(DEFAULT_MODS_CONFIG_FILE.to_string());
 
-            warn!("Loading mods config from {}", mods_config_path.display());
+            warn!("Loading mods config from {}", mods_config_file);
 
-            match read_to_string(mods_config_path) {
+            match read_to_string(&Path::new(&mods_config_file)) {
                 Ok(s) => {
                     let split = s
                         .strip_suffix("\n")
