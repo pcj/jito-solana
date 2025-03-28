@@ -1757,6 +1757,17 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                     May get stuck if the leader used is different from others.",
                 ),
         )
+        .arg(
+            Arg::with_name("mods_config")
+                .long("mods-config")
+                .value_name("FILE")
+                .takes_value(true)
+                .required(false)
+                .help(
+                    "Specifies the path for a mods config file. \
+                    [default: `/mostly_confirmed_threshold`]",
+                ),
+        )
         .args(&thread_args(&default_args.thread_args))
         .args(&get_deprecated_arguments())
         .after_help("The default subcommand is run")

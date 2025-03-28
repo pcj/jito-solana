@@ -1,6 +1,7 @@
 use {
     crate::{
         consensus::tower_storage::{SavedTowerVersions, TowerStorage},
+        next_leader::next_leader_tpu_vote_maybe_vote_n,
         next_leader::upcoming_leader_tpu_vote_sockets,
     },
     crossbeam_channel::Receiver,
@@ -8,7 +9,9 @@ use {
     solana_measure::measure::Measure,
     solana_poh::poh_recorder::PohRecorder,
     solana_sdk::{
-        clock::{Slot, FORWARD_TRANSACTIONS_TO_LEADER_AT_SLOT_OFFSET},
+        clock::{
+            Slot, FORWARD_TRANSACTIONS_TO_LEADER_AT_SLOT_OFFSET, NUM_CONSECUTIVE_LEADER_SLOTS,
+        },
         transaction::Transaction,
     },
     std::{
@@ -66,7 +69,7 @@ impl VotingService {
     }
 
     pub fn handle_vote(
-        cluster_info: &ClusterInfo,
+        cluster_info: &Arc<ClusterInfo>,
         poh_recorder: &RwLock<PohRecorder>,
         tower_storage: &dyn TowerStorage,
         vote_op: VoteOp,
@@ -81,6 +84,7 @@ impl VotingService {
             trace!("{measure}");
         }
 
+        // Main solana code REVIEW
         // Attempt to send our vote transaction to the leaders for the next few slots
         const UPCOMING_LEADER_FANOUT_SLOTS: u64 = FORWARD_TRANSACTIONS_TO_LEADER_AT_SLOT_OFFSET;
         #[cfg(test)]
@@ -90,10 +94,31 @@ impl VotingService {
             poh_recorder,
             UPCOMING_LEADER_FANOUT_SLOTS,
         );
+        // if !upcoming_leader_sockets.is_empty() {
+        //     for tpu_vote_socket in upcoming_leader_sockets {
+        //         let _ = cluster_info.send_transaction(vote_op.tx(), Some(tpu_vote_socket));
+        //     }
+        // } else {
+        //     // Send to our own tpu vote socket if we cannot find a leader to send to
+        //     let _ = cluster_info.send_transaction(vote_op.tx(), None);
+        // }
+        // End of Main solana code
 
+        // Start of Mod code
         if !upcoming_leader_sockets.is_empty() {
-            for tpu_vote_socket in upcoming_leader_sockets {
-                let _ = cluster_info.send_transaction(vote_op.tx(), Some(tpu_vote_socket));
+            let mut next_leader: Option<std::net::SocketAddr> = None;
+
+            // xxx bji -- send to current and upcoming leaders to try to get minimum latency on the handling of
+            // the vote
+            for n in VOTE_LEADER_SLOT_OFFSETS {
+                let maybe_next_leader =
+                    next_leader_tpu_vote_maybe_vote_n(cluster_info, poh_recorder, *n)
+                        .map(|(_pubkey, target_addr)| target_addr);
+
+                if maybe_next_leader != next_leader {
+                    next_leader = maybe_next_leader;
+                    let _ = cluster_info.send_transaction(vote_op.tx(), next_leader);
+                }
             }
         } else {
             // Send to our own tpu vote socket if we cannot find a leader to send to
@@ -119,3 +144,11 @@ impl VotingService {
         self.thread_hdl.join()
     }
 }
+
+const VOTE_LEADER_SLOT_OFFSETS: &'static [u64] = &[
+    0,
+    NUM_CONSECUTIVE_LEADER_SLOTS,
+    2 * NUM_CONSECUTIVE_LEADER_SLOTS,
+    3 * NUM_CONSECUTIVE_LEADER_SLOTS,
+    4 * NUM_CONSECUTIVE_LEADER_SLOTS,
+];
